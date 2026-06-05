@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLIZZY SQUIRT • Hot Dog Ketchup Carnage</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #1a1a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            overflow: hidden;
+        }
+        canvas {
+            border: 8px solid #ffcc00;
+            border-radius: 20px;
+            box-shadow: 0 0 40px #ff8800, 0 0 80px rgba(255, 140, 0, 0.6);
+            background: linear-gradient(#87CEEB, #f0e68c);
+        }
+        #instructions {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            background: rgba(0,0,0,0.6);
+            padding: 10px 25px;
+            border-radius: 50px;
+            font-size: 22px;
+            pointer-events: none;
+            text-shadow: 2px 2px 4px #000;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="instructions">DRAG the ketchup bottle back → RELEASE to SQUIRT! Knock ALL the glizzies off the wire!</div>
+    <canvas id="game" width="950" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+        
+        // Game constants
+        const LAUNCH_X = 255;
+        const LAUNCH_Y = 385;
+        const WIRE_Y = 165;
+        const MAX_PULL = 160;
+        const POWER_MULTIPLIER = 0.26;
+        const GRAVITY = 0.38;
+        
+        // Game variables
+        let smallHotDogs = [];
+        let projectiles = [];
+        let particles = [];
+        let aiming = false;
+        let mouseX = 0;
+        let mouseY = 0;
+        let bottleAngle = -0.6; // default pointing up-right
+        let gameState = 'playing'; // playing | won
+        let currentWinPhrase = '';
+        
+        const winPhrases = [
+            "GLIZZY KING 👑",
+            "HOT DOG TERMINATOR 🔥",
+            "KETCHUP CHAMPION 🏆",
+            "WEINER WIPEOUT 💥",
+            "SQUIRT MASTER 3000",
+            "DOG DESTROYER 🐶",
+            "GLIZZY GOD MODE"
+        ];
+        
+        // Create small hot dogs on the wire
+        function initSmallHotDogs() {
+            smallHotDogs = [];
+            for (let i = 0; i < 8; i++) {
+                smallHotDogs.push({
+                    x: 320 + i * 72,
+                    y: WIRE_Y,
+                    radius: 26,
+                    vx: 0,
+                    vy: 0,
+                    rotation: 0,
+                    angularVel: 0,
+                    onWire: true,
+                    hit: false
+                });
+            }
+        }
+        
+        // Reset the entire game
+        function resetGame() {
+            initSmallHotDogs();
+            projectiles = [];
+            particles = [];
+            aiming = false;
+            bottleAngle = -0.6;
+            gameState = 'playing';
+            currentWinPhrase = '';
+        }
+        
+        // Draw the giant happy hot dog (body, face, legs, arm)
+        function drawGiantHotDog() {
+            const bodyX = 155;
+            const bodyY = 375;
+            
+            // Body (giant sausage)
+            ctx.fillStyle = '#e8a05a';
+            ctx.beginPath();
+            ctx.ellipse(bodyX + 8, bodyY, 125, 52, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Slight bun shading on top
+            ctx.fillStyle = '#f5c78a';
+            ctx.beginPath();
+            ctx.ellipse(bodyX + 8, bodyY - 22, 105, 28, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Grill marks
+            ctx.strokeStyle = '#c67c3a';
+            ctx.lineWidth = 7;
+            for (let i = -3; i <= 3; i++) {
+                ctx.beginPath();
+                ctx.moveTo(bodyX - 95, bodyY + i * 11);
+                ctx.quadraticCurveTo(bodyX, bodyY + i * 11 - 4, bodyX + 105, bodyY + i * 11);
+                ctx.stroke();
+            }
+            
+            // Happy face on the right end
+            const faceX = bodyX + 98;
+            const faceY = bodyY - 8;
+            
+            // Head highlight
+            ctx.fillStyle = '#f5c78a';
+            ctx.beginPath();
+            ctx.arc(faceX + 12, faceY, 38, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Eyes
+            ctx.fillStyle = '#2c2c2c';
+            ctx.beginPath(); // left eye
+            ctx.arc(faceX - 8, faceY - 12, 9, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath(); // right eye
+            ctx.arc(faceX + 28, faceY - 12, 9, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Eye shines
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(faceX - 11, faceY - 15, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(faceX + 25, faceY - 15, 3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Big happy smile
+            ctx.strokeStyle = '#2c2c2c';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.arc(faceX + 10, faceY + 10, 19, 0.2 * Math.PI, 0.8 * Math.PI);
+            ctx.stroke();
+            
+            // Legs
+            ctx.strokeStyle = '#5c4033';
+            ctx.lineWidth = 18;
+            // left leg
+            ctx.beginPath();
+            ctx.moveTo(bodyX - 55, bodyY + 38);
+            ctx.lineTo(bodyX - 78, bodyY + 115);
+            ctx.stroke();
+            // right leg
+            ctx.beginPath();
+            ctx.moveTo(bodyX + 40, bodyY + 38);
+            ctx.lineTo(bodyX + 65, bodyY + 115);
+            ctx.stroke();
+            
+            // Feet
+            ctx.fillStyle = '#5c4033';
+            ctx.fillRect(bodyX - 95, bodyY + 108, 32, 14);
+            ctx.fillRect(bodyX + 48, bodyY + 108, 32, 14);
+            
+            // Right arm (holding the bottle)
+            ctx.lineWidth = 22;
+            ctx.beginPath();
+            ctx.moveTo(bodyX + 92, bodyY + 12);
+            const handX = LAUNCH_X - 18;
+            const handY = LAUNCH_Y + 12;
+            ctx.lineTo(handX, handY);
+            ctx.stroke();
+            
+            // Hand (simple circle)
+            ctx.fillStyle = '#e8a05a';
+            ctx.beginPath();
+            ctx.arc(handX + 4, handY - 6, 18, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        // Draw the ketchup bottle (rotated around nozzle tip)
+        function drawKetchupBottle(angle) {
+            ctx.save();
+            ctx.translate(LAUNCH_X, LAUNCH_Y);
+            ctx.rotate(angle);
+            
+            // Bottle body (behind nozzle)
+            ctx.fillStyle = '#e60000';
+            ctx.fillRect(-82, -18, 72, 36);
+            
+            // Bottle label / shine
+            ctx.fillStyle = '#ff4444';
+            ctx.fillRect(-72, -14, 18, 28);
+            
+            // Bottle neck
+            ctx.fillStyle = '#c81010';
+            ctx.fillRect(-18, -13, 28, 26);
+            
+            // Nozzle tip pointing forward
+            ctx.fillStyle = '#8B0000';
+            ctx.beginPath();
+            ctx.moveTo(8, -9);
+            ctx.lineTo(38, -3);
+            ctx.lineTo(8, 9);
+            ctx.fill();
+            
+            // Tiny ketchup drip on tip
+            ctx.fillStyle = '#ff2222';
+            ctx.beginPath();
+            ctx.arc(34, 1, 5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+        
+        // Draw a single small hot dog
+        function drawSmallHotDog(dog) {
+            ctx.save();
+            ctx.translate(dog.x, dog.y);
+            if (!dog.onWire) {
+                ctx.rotate(dog.rotation);
+            }
+            
+            // Sausage body
+            ctx.fillStyle = '#e8a05a';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, dog.radius * 1.65, dog.radius * 0.75, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Grill marks
+            ctx.strokeStyle = '#c67c3a';
+            ctx.lineWidth = 4;
+            for (let i = -1; i <= 1; i++) {
+                ctx.beginPath();
+                ctx.moveTo(-dog.radius * 1.4, i * 9);
+                ctx.quadraticCurveTo(0, i * 9 - 3, dog.radius * 1.4, i * 9);
+                ctx.stroke();
+            }
+            
+            // Tiny happy face (only when still on wire)
+            if (dog.onWire) {
+                ctx.fillStyle = '#2c2c2c';
+                // eyes
+                ctx.fillRect(-11, -9, 5, 5);
+                ctx.fillRect(6, -9, 5, 5);
+                // smile
+                ctx.beginPath();
+                ctx.arc(0, 3, 7, 0.3 * Math.PI, 0.8 * Math.PI);
+                ctx.stroke();
+            }
+            
+            ctx.restore();
+        }
+        
+        // Draw the wire
+        function drawWire() {
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 14;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#111';
+            ctx.beginPath();
+            ctx.moveTo(240, WIRE_Y);
+            ctx.lineTo(850, WIRE_Y);
+            ctx.stroke();
+            
+            // Little hooks / supports
+            ctx.lineWidth = 6;
+            ctx.shadowBlur = 0;
+            for (let i = 0; i < 9; i++) {
+                const x = 290 + i * 72;
+                ctx.beginPath();
+                ctx.moveTo(x, WIRE_Y - 12);
+                ctx.lineTo(x, WIRE_Y + 18);
+                ctx.stroke();
+            }
+        }
+        
+        // Main draw function
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Background sky gradient already set via CSS, but add some clouds or fun details
+            ctx.fillStyle = 'rgba(255,255,255,0.3)';
+            ctx.beginPath();
+            ctx.arc(120, 80, 35, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(160, 70, 25, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(720, 110, 42, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Floor / grill
+            ctx.fillStyle = '#d2a679';
+            ctx.fillRect(0, 520, canvas.width, 80);
+            
+            // Wire
+            drawWire();
+            
+            // Giant hot dog
+            drawGiantHotDog();
+            
+            // Ketchup bottle
+            drawKetchupBottle(bottleAngle);
+            
+            // Small hot dogs
+            smallHotDogs.forEach(dog => {
+                drawSmallHotDog(dog);
+            });
+            
+            // Projectiles (ketchup blobs)
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#ff2222';
+            projectiles.forEach(p => {
+                ctx.fillStyle = '#ff2222';
+                ctx.beginPath();
+                ctx.ellipse(p.x, p.y, p.size, p.size * 0.6, Math.atan2(p.vy, p.vx), 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Tiny shine
+                ctx.fillStyle = 'rgba(255,255,200,0.7)';
+                ctx.beginPath();
+                ctx.arc(p.x - 5, p.y - 5, 6, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.shadowBlur = 0;
+            
+            // Particles (ketchup splatter)
+            particles.forEach((p, i) => {
+                ctx.globalAlpha = p.life / 35;
+                ctx.fillStyle = '#ff2222';
+                ctx.fillRect(p.x, p.y, 7, 7);
+            });
+            ctx.globalAlpha = 1;
+            
+            // Aim line while dragging
+            if (aiming) {
+                const pullX = mouseX - LAUNCH_X;
+                const pullY = mouseY - LAUNCH_Y;
+                const dist = Math.hypot(pullX, pullY);
+                if (dist > 10) {
+                    const dirX = -pullX / dist;
+                    const dirY = -pullY / dist;
+                    ctx.strokeStyle = 'rgba(255, 60, 60, 0.6)';
+                    ctx.lineWidth = 8;
+                    ctx.setLineDash([12, 18]);
+                    ctx.beginPath();
+                    ctx.moveTo(LAUNCH_X, LAUNCH_Y);
+                    ctx.lineTo(LAUNCH_X + dirX * 280, LAUNCH_Y + dirY * 280);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+            }
+            
+            // Win screen
+            if (gameState === 'won') {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Big text
+                ctx.shadowBlur = 25;
+                ctx.shadowColor = '#ffcc00';
+                ctx.fillStyle = '#ffcc00';
+                ctx.font = 'bold 78px Comic Sans MS';
+                ctx.textAlign = 'center';
+                ctx.fillText(currentWinPhrase, canvas.width / 2, 240);
+                
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 36px Comic Sans MS';
+                ctx.fillText('YOU SQUIRTED THEM ALL!', canvas.width / 2, 310);
+                
+                ctx.font = '28px Comic Sans MS';
+                ctx.fillText('Click anywhere to play again!', canvas.width / 2, 400);
+                
+                // Confetti ketchup drops
+                ctx.fillStyle = '#ff2222';
+                for (let i = 0; i < 28; i++) {
+                    const x = (canvas.width / 28) * i + (Date.now() % 3000) / 30;
+                    ctx.fillRect(x, 80 + Math.sin(Date.now() / 200 + i) * 20, 14, 14);
+                }
+            }
+            
+            // Score / remaining
+            if (gameState === 'playing') {
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 26px Comic Sans MS';
+                ctx.textAlign = 'left';
+                const remaining = smallHotDogs.filter(d => d.onWire).length;
+                ctx.fillText(`GLIZZIES LEFT: ${remaining}`, 30, 45);
+                ctx.fillText('🟥 KETCHUP POWER', 30, 80);
+            }
+        }
+        
+        // Update physics
+        function update() {
+            if (gameState !== 'playing') return;
+            
+            // Update projectiles
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                p.vy += GRAVITY;
+                p.x += p.vx;
+                p.y += p.vy;
+                p.size = Math.max(8, p.size - 0.1);
+                
+                // Remove off-screen projectiles
+                if (p.x < -50 || p.x > canvas.width + 50 || p.y > canvas.height + 50) {
+                    projectiles.splice(i, 1);
+                }
+            }
+            
+            // Update small hot dogs
+            for (let i = smallHotDogs.length - 1; i >= 0; i--) {
+                const dog = smallHotDogs[i];
+                if (!dog.onWire) {
+                    dog.vy += GRAVITY * 1.1;
+                    dog.x += dog.vx;
+                    dog.y += dog.vy;
+                    dog.rotation += dog.angularVel;
+                    dog.angularVel *= 0.97;
+                    dog.vx *= 0.98;
+                }
+            }
+            
+            // Check for win before removing fallen dogs
+            if (smallHotDogs.length > 0 && smallHotDogs.every(d => !d.onWire)) {
+                gameState = 'won';
+                currentWinPhrase = winPhrases[Math.floor(Math.random() * winPhrases.length)];
+            }
+            
+            // Remove completely fallen dogs
+            for (let i = smallHotDogs.length - 1; i >= 0; i--) {
+                if (smallHotDogs[i].y > canvas.height + 100) {
+                    smallHotDogs.splice(i, 1);
+                }
+            }
+            
+            // Update particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.4;
+                p.life--;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+            
+            // Collision detection: ketchup → small hot dogs
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                for (let j = smallHotDogs.length - 1; j >= 0; j--) {
+                    const dog = smallHotDogs[j];
+                    if (!dog.onWire) continue;
+                    
+                    const dx = p.x - dog.x;
+                    const dy = p.y - dog.y;
+                    const distance = Math.hypot(dx, dy);
+                    
+                    if (distance < dog.radius + 14) {
+                        // HIT!
+                        dog.onWire = false;
+                        dog.vx = p.vx * 1.4 + (Math.random() * 9 - 4.5);
+                        dog.vy = p.vy * 1.2 - 9; // big upward kick
+                        dog.angularVel = (Math.random() - 0.5) * 0.35;
+                        
+                        // Ketchup explosion particles
+                        for (let k = 0; k < 22; k++) {
+                            particles.push({
+                                x: dog.x,
+                                y: dog.y,
+                                vx: p.vx * 0.6 + (Math.random() * 14 - 7),
+                                vy: p.vy * 0.6 + (Math.random() * 14 - 12),
+                                life: 32 + Math.random() * 18
+                            });
+                        }
+                        
+                        // Remove the projectile after hit
+                        projectiles.splice(i, 1);
+                        break;
+                    }
+                }
+            }
+            
+        }
+        
+        // Game loop
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+        
+        // Mouse controls
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        }
+        
+        canvas.addEventListener('mousedown', (e) => {
+            getMousePos(e);
+            
+            if (gameState === 'won') {
+                resetGame();
+                return;
+            }
+            
+            // Only start aiming if click is near the bottle area
+            const distToBottle = Math.hypot(mouseX - LAUNCH_X, mouseY - LAUNCH_Y);
+            if (distToBottle < 140) {
+                aiming = true;
+            }
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            getMousePos(e);
+            
+            if (aiming && gameState === 'playing') {
+                // Update bottle angle based on pull direction
+                const pullX = mouseX - LAUNCH_X;
+                const pullY = mouseY - LAUNCH_Y;
+                const dist = Math.hypot(pullX, pullY);
+                
+                if (dist > 8) {
+                    const dirX = -pullX / dist;
+                    const dirY = -pullY / dist;
+                    bottleAngle = Math.atan2(dirY, dirX);
+                }
+            }
+        });
+        
+        canvas.addEventListener('mouseup', (e) => {
+            if (!aiming || gameState !== 'playing') return;
+            
+            getMousePos(e);
+            
+            let pullX = mouseX - LAUNCH_X;
+            let pullY = mouseY - LAUNCH_Y;
+            let dist = Math.hypot(pullX, pullY);
+            
+            if (dist > 15) {
+                // Clamp pull distance
+                if (dist > MAX_PULL) {
+                    const ratio = MAX_PULL / dist;
+                    pullX *= ratio;
+                    pullY *= ratio;
+                }
+                
+                // Launch ketchup!
+                const vx = -pullX * POWER_MULTIPLIER;
+                const vy = -pullY * POWER_MULTIPLIER;
+                
+                projectiles.push({
+                    x: LAUNCH_X,
+                    y: LAUNCH_Y,
+                    vx: vx,
+                    vy: vy,
+                    size: 22
+                });
+                
+                // Tiny recoil particles at nozzle
+                for (let i = 0; i < 6; i++) {
+                    particles.push({
+                        x: LAUNCH_X,
+                        y: LAUNCH_Y,
+                        vx: -vx * 0.3 + (Math.random() * 6 - 3),
+                        vy: -vy * 0.3 + (Math.random() * 6 - 3),
+                        life: 12
+                    });
+                }
+            }
+            
+            aiming = false;
+            // Reset bottle to a neutral ready angle
+            bottleAngle = -0.6;
+        });
+        
+        // Touch support for mobile
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            mouseX = touch.clientX - rect.left;
+            mouseY = touch.clientY - rect.top;
+            
+            if (gameState === 'won') {
+                resetGame();
+                return;
+            }
+            
+            const distToBottle = Math.hypot(mouseX - LAUNCH_X, mouseY - LAUNCH_Y);
+            if (distToBottle < 140) aiming = true;
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            mouseX = touch.clientX - rect.left;
+            mouseY = touch.clientY - rect.top;
+            
+            if (aiming && gameState === 'playing') {
+                const pullX = mouseX - LAUNCH_X;
+                const pullY = mouseY - LAUNCH_Y;
+                const dist = Math.hypot(pullX, pullY);
+                if (dist > 8) {
+                    const dirX = -pullX / dist;
+                    const dirY = -pullY / dist;
+                    bottleAngle = Math.atan2(dirY, dirX);
+                }
+            }
+        });
+        
+        canvas.addEventListener('touchend', (e) => {
+            if (!aiming || gameState !== 'playing') return;
+            let pullX = mouseX - LAUNCH_X;
+            let pullY = mouseY - LAUNCH_Y;
+            let dist = Math.hypot(pullX, pullY);
+            
+            if (dist > 15) {
+                if (dist > MAX_PULL) {
+                    const ratio = MAX_PULL / dist;
+                    pullX *= ratio;
+                    pullY *= ratio;
+                }
+                const vx = -pullX * POWER_MULTIPLIER;
+                const vy = -pullY * POWER_MULTIPLIER;
+                
+                projectiles.push({ x: LAUNCH_X, y: LAUNCH_Y, vx, vy, size: 22 });
+                
+                for (let i = 0; i < 6; i++) {
+                    particles.push({
+                        x: LAUNCH_X,
+                        y: LAUNCH_Y,
+                        vx: -vx * 0.3 + (Math.random() * 6 - 3),
+                        vy: -vy * 0.3 + (Math.random() * 6 - 3),
+                        life: 12
+                    });
+                }
+            }
+            
+            aiming = false;
+            bottleAngle = -0.6;
+        });
+        
+        // Keyboard shortcut for fun (R = restart)
+        window.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 'r') {
+                resetGame();
+            }
+        });
+        
+        // Start the game
+        resetGame();
+        loop();
+        
+        console.log('%c🎉 GLIZZY SQUIRT GAME LOADED! Drag the ketchup bottle and become the Hot Dog Terminator!', 'color:#ff2222; font-size:18px; font-weight:bold');
+    </script>
+</body>
+</html>
