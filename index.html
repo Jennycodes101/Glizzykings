@@ -447,13 +447,21 @@
                     dog.rotation += dog.angularVel;
                     dog.angularVel *= 0.97;
                     dog.vx *= 0.98;
-                    
-                    // Remove completely fallen dogs
-                    if (dog.y > canvas.height + 100) {
-                        smallHotDogs.splice(i, 1);
-                    }
                 } else {
                     allOffWire = false;
+                }
+            }
+            
+            // Check for win before removing fallen dogs
+            if (smallHotDogs.length > 0 && smallHotDogs.every(d => !d.onWire)) {
+                gameState = 'won';
+                currentWinPhrase = winPhrases[Math.floor(Math.random() * winPhrases.length)];
+            }
+            
+            // Remove completely fallen dogs
+            for (let i = smallHotDogs.length - 1; i >= 0; i--) {
+                if (smallHotDogs[i].y > canvas.height + 100) {
+                    smallHotDogs.splice(i, 1);
                 }
             }
             
@@ -504,11 +512,6 @@
                 }
             }
             
-            // Check for win
-            if (smallHotDogs.length > 0 && smallHotDogs.every(d => !d.onWire)) {
-                gameState = 'won';
-                currentWinPhrase = winPhrases[Math.floor(Math.random() * winPhrases.length)];
-            }
         }
         
         // Game loop
@@ -562,15 +565,16 @@
             
             getMousePos(e);
             
-            const pullX = mouseX - LAUNCH_X;
-            const pullY = mouseY - LAUNCH_Y;
+            let pullX = mouseX - LAUNCH_X;
+            let pullY = mouseY - LAUNCH_Y;
             let dist = Math.hypot(pullX, pullY);
             
             if (dist > 15) {
                 // Clamp pull distance
                 if (dist > MAX_PULL) {
                     const ratio = MAX_PULL / dist;
-                    // pullX and pullY are already from mouse - launch
+                    pullX *= ratio;
+                    pullY *= ratio;
                 }
                 
                 // Launch ketchup!
@@ -639,13 +643,17 @@
         });
         
         canvas.addEventListener('touchend', (e) => {
-            if (!aiming) return;
-            const pullX = mouseX - LAUNCH_X;
-            const pullY = mouseY - LAUNCH_Y;
+            if (!aiming || gameState !== 'playing') return;
+            let pullX = mouseX - LAUNCH_X;
+            let pullY = mouseY - LAUNCH_Y;
             let dist = Math.hypot(pullX, pullY);
             
             if (dist > 15) {
-                if (dist > MAX_PULL) dist = MAX_PULL;
+                if (dist > MAX_PULL) {
+                    const ratio = MAX_PULL / dist;
+                    pullX *= ratio;
+                    pullY *= ratio;
+                }
                 const vx = -pullX * POWER_MULTIPLIER;
                 const vy = -pullY * POWER_MULTIPLIER;
                 
