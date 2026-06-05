@@ -64,7 +64,6 @@
         let bottleAngle = -0.6; // default pointing up-right
         let gameState = 'playing'; // playing | won
         let currentWinPhrase = '';
-        let score = 0;
         
         const winPhrases = [
             "GLIZZY KING 👑",
@@ -102,7 +101,6 @@
             aiming = false;
             bottleAngle = -0.6;
             gameState = 'playing';
-            score = 0;
             currentWinPhrase = '';
         }
         
@@ -503,7 +501,6 @@
                         
                         // Remove the projectile after hit
                         projectiles.splice(i, 1);
-                        score++;
                         break;
                     }
                 }
